@@ -104,7 +104,7 @@ namespace 海康威视图像采集及处理
         // 定义Marker相对于立方体中心的变换关系
         private readonly Dictionary<int, (Vector3 offset, Vector3 rotation)> markerTransforms;
 
- 
+
 
         //计算marker面积的辅助方法
         private double CalculateMarkerArea(Point2f[] corners)
@@ -1393,10 +1393,89 @@ namespace 海康威视图像采集及处理
             return NormalizeAngle((angle1 + angle2) / 2);
         }
 
+        private void DrawCubeCoordinateSystem(Mat image,
+            float centerX, float centerY, float centerZ,
+            double roll, double pitch, double yaw)
+        {
+            float axisLength = CUBE_SIZE * 2;
+
+            Point3f[] axisPoints = new Point3f[]
+            {
+        new Point3f(0, 0, 0),
+        new Point3f(axisLength, 0, 0),
+        new Point3f(0, axisLength, 0),
+        new Point3f(0, 0, axisLength)
+            };
+
+            using (var tvec = new Mat(3, 1, MatType.CV_64F))
+            using (var rotVec = new Mat(3, 1, MatType.CV_64F))
+            using (var imagePointsMat = new Mat())
+            {
+                // 设置平移向量
+                tvec.Set(0, 0, centerX);
+                tvec.Set(1, 0, centerY);
+                tvec.Set(2, 0, centerZ);
+
+                // 设置旋转向量
+                double rollRad = roll * Math.PI / 180.0;
+                double pitchRad = pitch * Math.PI / 180.0;
+                double yawRad = yaw * Math.PI / 180.0;
+
+                rotVec.Set(0, 0, rollRad);
+                rotVec.Set(1, 0, pitchRad);
+                rotVec.Set(2, 0, yawRad);
+
+                // 执行投影
+                Cv2.ProjectPoints(
+                    InputArray.Create(axisPoints),
+                    rotVec,
+                    tvec,
+                    cameraMatrix,
+                    distCoeffs,
+                    imagePointsMat
+                );
+
+                // 获取投影结果
+                Point2f[] imagePoints = new Point2f[axisPoints.Length];
+                for (int i = 0; i < axisPoints.Length; i++)
+                {
+                    imagePoints[i] = imagePointsMat.At<Point2f>(i);
+                }
+
+                // 绘制坐标轴
+                int thickness = 2;
+                Cv2.Line(image,
+                    (Point)imagePoints[0],
+                    (Point)imagePoints[1],
+                    new Scalar(0, 0, 255),
+                    thickness);  // X轴-红色
+
+                Cv2.Line(image,
+                    (Point)imagePoints[0],
+                    (Point)imagePoints[2],
+                    new Scalar(0, 255, 0),
+                    thickness);  // Y轴-绿色
+
+                Cv2.Line(image,
+                    (Point)imagePoints[0],
+                    (Point)imagePoints[3],
+                    new Scalar(255, 0, 0),
+                    thickness);  // Z轴-蓝色
+
+                // 添加坐标轴标签
+                int fontScale = 1;
+                Cv2.PutText(image, "X", (Point)imagePoints[1],
+                    HersheyFonts.HersheyPlain, fontScale, new Scalar(0, 0, 255));
+                Cv2.PutText(image, "Y", (Point)imagePoints[2],
+                    HersheyFonts.HersheyPlain, fontScale, new Scalar(0, 255, 0));
+                Cv2.PutText(image, "Z", (Point)imagePoints[3],
+                    HersheyFonts.HersheyPlain, fontScale, new Scalar(255, 0, 0));
+            }
+        }
 
         // 新增的 ArUco 检测相关代码
         private Mat ProcessImage1(Mat image, out Mat grayImage,
-            out float X, out float Y, out float Z, 
+            out float X, out float Y, out float Z,
             out float Roll, out float Pitch, out float Yaw,
             out int selectedMarkerId)
         {
@@ -1476,7 +1555,7 @@ namespace 海康威视图像采集及处理
             return outputImage;
         }
         private Mat ProcessImage2(Mat image, out Mat grayImage,
-            out float X, out float Y, out float Z,  
+            out float X, out float Y, out float Z,
             out float Roll, out float Pitch, out float Yaw,
             out int selectedMarkerId)
         {
@@ -1565,11 +1644,11 @@ namespace 海康威视图像采集及处理
             Task.Run(() =>
             {
                 Mat grayImage;
-                float X, Y, Z; 
+                float X, Y, Z;
                 float Roll, Pitch, Yaw;
                 int selectedMarkerId;
                 Mat processedImage = ProcessImage1(mat, out grayImage,
-                    out X, out Y, out Z,  
+                    out X, out Y, out Z,
                     out Roll, out Pitch, out Yaw,
                     out selectedMarkerId);
 
@@ -1585,6 +1664,15 @@ namespace 海康威视图像采集及处理
                     }
                 }
 
+                if (X != 0 || Y != 0 || Z != 0)  // 假设0,0,0表示未检测到
+                {
+                    DrawCubeCoordinateSystem(
+                        processedImage,
+                        X, Y, Z,
+                        Roll, Pitch, Yaw
+                    );
+                }
+
                 this.Invoke((Action)(() =>
                 {
                     string info =
@@ -1593,7 +1681,7 @@ namespace 海康威视图像采集及处理
                         $"Position:\n\n" +
                         $"X = {X:F2}\n\n" +
                         $"Y = {Y:F2}\n\n" +
-                        $"Z = {Z:F2}\n\n" +  
+                        $"Z = {Z:F2}\n\n" +
                         $"Rotation:\n\n" +
                         $"Roll = {Roll:F2}\n\n" +
                         $"Pitch = {Pitch:F2}\n\n" +
@@ -1610,11 +1698,11 @@ namespace 海康威视图像采集及处理
             Task.Run(() =>
             {
                 Mat grayImage;
-                float X, Y, Z;  
+                float X, Y, Z;
                 float Roll, Pitch, Yaw;
                 int selectedMarkerId;
                 Mat processedImage = ProcessImage2(mat, out grayImage,
-                    out X, out Y, out Z,  
+                    out X, out Y, out Z,
                     out Roll, out Pitch, out Yaw,
                     out selectedMarkerId);
 
@@ -1630,6 +1718,16 @@ namespace 海康威视图像采集及处理
                     }
                 }
 
+                if (X != 0 || Y != 0 || Z != 0)  // 假设0,0,0表示未检测到
+                {
+                    DrawCubeCoordinateSystem(
+                        processedImage,
+                        X, Y, Z,
+                        Roll, Pitch, Yaw
+                    );
+                }
+
+
                 this.Invoke((Action)(() =>
                 {
                     string info =
@@ -1638,7 +1736,7 @@ namespace 海康威视图像采集及处理
                         $"Position:\n\n" +
                         $"X = {X:F2}\n\n" +
                         $"Y = {Y:F2}\n\n" +
-                        $"Z = {Z:F2}\n\n" +  
+                        $"Z = {Z:F2}\n\n" +
                         $"Rotation:\n\n" +
                         $"Roll = {Roll:F2}\n\n" +
                         $"Pitch = {Pitch:F2}\n\n" +
