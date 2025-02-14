@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.12.35527.113 d17.12
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "海康威视图像采集及处理", "海康威视图像采集及处理\海康威视图像采集及处理.csproj", "{C609193E-A85F-4A85-B486-CB0C6063B961}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		x64|Any CPU = x64|Any CPU
+		x64|x64 = x64|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.Debug|x64.ActiveCfg = Debug|x64
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.Debug|x64.Build.0 = Debug|x64
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.Release|x64.ActiveCfg = Release|x64
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.Release|x64.Build.0 = Release|x64
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.x64|Any CPU.ActiveCfg = x64|Any CPU
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.x64|Any CPU.Build.0 = x64|Any CPU
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.x64|x64.ActiveCfg = x64|x64
+		{C609193E-A85F-4A85-B486-CB0C6063B961}.x64|x64.Build.0 = x64|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A1EE9AD4-B3E2-422C-9C86-BFDBB7F33890}
+	EndGlobalSection
+EndGlobal
