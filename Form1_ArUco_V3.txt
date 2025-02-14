@@ -79,7 +79,7 @@ namespace 海康威视图像采集及处理
         private Mat distCoeffs;
 
 
-        // 立方体常量和变量
+        // 立方体常量
         private const float CUBE_SIZE = 35.0f;  // 立方体边长
         private const float MARKER_SIZE = 30.0f; // ArUco码边长
 
@@ -87,58 +87,24 @@ namespace 海康威视图像采集及处理
         // 存储立方体的当前位姿
         private (float X, float Y)?[] cubeCenters = new (float X, float Y)?[2];
         private class CubeInfo
-        {   
+        {
             public (double X, double Y, double Z) Position;
             public (double Roll, double Pitch, double Yaw) Rotation;
         }
         private CubeInfo currentCubeInfo = new CubeInfo();
 
+        // 修改相机姿态存储变量的定义（在类的成员变量部分）
+        private (double X, double Y, double Z, double Roll, double Pitch, double Yaw)? camera1Pose = null;
+        private (double X, double Y, double Z, double Roll, double Pitch, double Yaw)? camera2Pose = null;
+
+        // 坐标系相关常量
+        private const float CAMERA1_DISTANCE = 450.0f;  // 相机1到原点距离（X轴负方向）
+        private const float CAMERA2_DISTANCE = 450.0f;  // 相机2到原点距离（Y轴负方向）
 
         // 定义Marker相对于立方体中心的变换关系
         private readonly Dictionary<int, (Vector3 offset, Vector3 rotation)> markerTransforms;
 
-        private (float centerX, float centerY) EstimateCubeCenterFromMarker(
-            int markerId,
-            Point2f[] markerCorners,
-            Mat rvec,
-            Mat tvec)
-                {
-            float markerCenterX = markerCorners.Average(p => p.X);
-            float markerCenterY = markerCorners.Average(p => p.Y);
-
-            using (var rotMat = new Mat())
-            {
-                Cv2.Rodrigues(rvec, rotMat);
-
-                if (!markerTransforms.TryGetValue(markerId, out var transform))
-                    return (markerCenterX, markerCenterY);
-
-                Vector3 originalOffset = transform.offset;
-
-                double[] rotatedOffset = new double[3];
-                for (int i = 0; i < 3; i++)
-                {
-                    rotatedOffset[i] =
-                        rotMat.At<double>(i, 0) * originalOffset.X +
-                        rotMat.At<double>(i, 1) * originalOffset.Y +
-                        rotMat.At<double>(i, 2) * originalOffset.Z;
-                }
-
-                double fx = cameraMatrix.At<double>(0, 0);
-                double fy = cameraMatrix.At<double>(1, 1);
-                double Z = tvec.At<double>(2) + rotatedOffset[2];
-
-                if (Z <= 0) return (markerCenterX, markerCenterY);
-
-                double projectedOffsetX = (rotatedOffset[0] * fx) / Z;
-                double projectedOffsetY = (rotatedOffset[1] * fy) / Z;
-
-                return (
-                    (float)(markerCenterX - projectedOffsetX),
-                    (float)(markerCenterY - projectedOffsetY)
-                );
-            }
-        }
+ 
 
         //计算marker面积的辅助方法
         private double CalculateMarkerArea(Point2f[] corners)
@@ -207,11 +173,25 @@ namespace 海康威视图像采集及处理
 
             markerTransforms = new Dictionary<int, (Vector3 offset, Vector3 rotation)>
             {
-                { 1, (new Vector3(0, 0, CUBE_SIZE/2),  new Vector3(0, 0, 0)) },     // 前面
-                { 3, (new Vector3(0, 0, -CUBE_SIZE/2), new Vector3(0, (float)Math.PI, 0)) }, // 后面
-                { 5, (new Vector3(CUBE_SIZE/2, 0, 0),  new Vector3(0, (float)Math.PI/2, 0)) }, // 右面
-                { 7, (new Vector3(-CUBE_SIZE/2, 0, 0), new Vector3(0, -(float)Math.PI/2, 0)) }, // 左面
-                { 9, (new Vector3(0, -CUBE_SIZE/2, 0), new Vector3((float)Math.PI/2, 0, 0)) }   // 下面
+                // 前面 Marker 1：面向+X
+                { 1, (new Vector3(CUBE_SIZE/2, 0, 0),
+                      new Vector3(0, 0, 0)) },
+    
+                // 后面 Marker 3：面向-X
+                { 3, (new Vector3(-CUBE_SIZE/2, 0, 0),
+                      new Vector3(0, (float)Math.PI, 0)) },
+    
+                // 右面 Marker 5：面向-Y
+                { 5, (new Vector3(0, -CUBE_SIZE/2, 0),
+                      new Vector3(0, -(float)Math.PI/2, 0)) },
+    
+                // 左面 Marker 7：面向+Y
+                { 7, (new Vector3(0, CUBE_SIZE/2, 0),
+                      new Vector3(0, (float)Math.PI/2, 0)) },
+    
+                // 底面 Marker 9：面向+Z
+                { 9, (new Vector3(0, 0, CUBE_SIZE/2),
+                      new Vector3(-(float)Math.PI/2, 0, 0)) }
             };
 
             Control.CheckForIllegalCrossThreadCalls = false;
@@ -1153,7 +1133,7 @@ namespace 海康威视图像采集及处理
                         if (IsImageProceee)
                         {
                             Mat mat = OpenCvSharp.Extensions.BitmapConverter.ToMat(m_bitmap);
-                            ProcessAndDisplayImageAsync(mat);
+                            ProcessAndDisplayImageAsync1(mat);
                         }
                     }
 
@@ -1259,85 +1239,126 @@ namespace 海康威视图像采集及处理
                 }
             }
         }
-        
+
         // 由marker推算cube位姿
-        private (double X, double Y, double Z, double Roll, double Pitch, double Yaw) EstimateCubePoseFromMarker(int markerId, Mat rvec, Mat tvec)
+        private (double X, double Y, double Z, double Roll, double Pitch, double Yaw)
+            EstimateCubePoseFromMarker1(int markerId, Mat rvec, Mat tvec)
         {
             try
             {
-                if (!markerTransforms.ContainsKey(markerId))
-                    return (0, 0, 0, 0, 0, 0);
-
-                // 获取marker的位姿
                 using (var rotMat = new Mat())
                 {
                     // 将旋转向量转换为旋转矩阵
                     Cv2.Rodrigues(rvec, rotMat);
 
-                    // 获取平移参数
-                    double x = tvec.Get<double>(0);
-                    double y = tvec.Get<double>(1);
-                    double z = tvec.Get<double>(2);
+                    // 相机坐标系下的位置
+                    double xCam = tvec.Get<double>(0);
+                    double yCam = tvec.Get<double>(1);
+                    double zCam = tvec.Get<double>(2);
 
-                    // 计算欧拉角
+                    // 先计算欧拉角
                     double roll = Math.Atan2(rotMat.At<double>(2, 1), rotMat.At<double>(2, 2));
                     double pitch = Math.Atan2(-rotMat.At<double>(2, 0),
                         Math.Sqrt(rotMat.At<double>(2, 1) * rotMat.At<double>(2, 1) +
                                  rotMat.At<double>(2, 2) * rotMat.At<double>(2, 2)));
                     double yaw = Math.Atan2(rotMat.At<double>(1, 0), rotMat.At<double>(0, 0));
 
-                    // 转换为角度
+                    // 根据marker ID获取其在立方体上的偏移量
+                    Vector3 offset = markerTransforms[markerId].offset;
+
+                    // 使用旋转矩阵对偏移量进行旋转
+                    double offsetX = rotMat.At<double>(0, 0) * offset.X +
+                                   rotMat.At<double>(0, 1) * offset.Y +
+                                   rotMat.At<double>(0, 2) * offset.Z;
+                    double offsetY = rotMat.At<double>(1, 0) * offset.X +
+                                   rotMat.At<double>(1, 1) * offset.Y +
+                                   rotMat.At<double>(1, 2) * offset.Z;
+                    double offsetZ = rotMat.At<double>(2, 0) * offset.X +
+                                   rotMat.At<double>(2, 1) * offset.Y +
+                                   rotMat.At<double>(2, 2) * offset.Z;
+
+                    // 在相机坐标系中减去旋转后的偏移量以得到立方体中心位置
+                    xCam -= offsetX;
+                    yCam -= offsetY;
+                    zCam -= offsetZ;
+
+                    // 转换到世界坐标系
+                    double xWorld = -zCam - CAMERA1_DISTANCE;  // 相机1的Z轴对应世界-X轴
+                    double yWorld = -xCam;                     // 相机1的X轴对应世界-Y轴
+                    double zWorld = yCam;                      // 相机1的Y轴对应世界Z轴
+
+                    // 转换角度到度数
                     roll = roll * 180.0 / Math.PI;
                     pitch = pitch * 180.0 / Math.PI;
                     yaw = yaw * 180.0 / Math.PI;
 
-                    // 根据marker的ID计算补偿变换
-                    switch (markerId)
-                    {
-                        case 1: // 前面
-                                // 无需转换，与立方体坐标系一致
-                            z -= CUBE_SIZE / 2;
-                            break;
-
-                        case 3: // 后面
-                            x = -x;
-                            z += CUBE_SIZE / 2;
-                            yaw += 180;
-                            break;
-
-                        case 5: // 右面
-                            double tempX = x;
-                            x = z - CUBE_SIZE / 2;
-                            z = -tempX;
-                            yaw += 90;
-                            break;
-
-                        case 7: // 左面
-                            tempX = x;
-                            x = -(z - CUBE_SIZE / 2);
-                            z = tempX;
-                            yaw -= 90;
-                            break;
-
-                        case 9: // 下面
-                            double tempY = y;
-                            y = z + CUBE_SIZE / 2;
-                            z = tempY;
-                            roll += 90;
-                            break;
-                    }
-
-                    // 标准化角度到 -180 到 180 度范围
-                    roll = NormalizeAngle(roll);
-                    pitch = NormalizeAngle(pitch);
-                    yaw = NormalizeAngle(yaw);
-
-                    return (x, y, z, roll, pitch, yaw);
+                    return (xWorld, yWorld, zWorld, roll, pitch, yaw);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in EstimateCubePoseFromMarker: {ex.Message}");
+                Console.WriteLine($"Error in EstimateCubePoseFromMarker1: {ex.Message}");
+                return (0, 0, 0, 0, 0, 0);
+            }
+        }
+
+        private (double X, double Y, double Z, double Roll, double Pitch, double Yaw)
+            EstimateCubePoseFromMarker2(int markerId, Mat rvec, Mat tvec)
+        {
+            try
+            {
+                using (var rotMat = new Mat())
+                {
+                    // 将旋转向量转换为旋转矩阵
+                    Cv2.Rodrigues(rvec, rotMat);
+
+                    // 相机坐标系下的位置
+                    double xCam = tvec.Get<double>(0);
+                    double yCam = tvec.Get<double>(1);
+                    double zCam = tvec.Get<double>(2);
+
+                    // 先计算欧拉角
+                    double roll = Math.Atan2(rotMat.At<double>(2, 1), rotMat.At<double>(2, 2));
+                    double pitch = Math.Atan2(-rotMat.At<double>(2, 0),
+                        Math.Sqrt(rotMat.At<double>(2, 1) * rotMat.At<double>(2, 1) +
+                                 rotMat.At<double>(2, 2) * rotMat.At<double>(2, 2)));
+                    double yaw = Math.Atan2(rotMat.At<double>(1, 0), rotMat.At<double>(0, 0));
+
+                    // 根据marker ID获取其在立方体上的偏移量
+                    Vector3 offset = markerTransforms[markerId].offset;
+
+                    // 使用旋转矩阵对偏移量进行旋转
+                    double offsetX = rotMat.At<double>(0, 0) * offset.X +
+                                   rotMat.At<double>(0, 1) * offset.Y +
+                                   rotMat.At<double>(0, 2) * offset.Z;
+                    double offsetY = rotMat.At<double>(1, 0) * offset.X +
+                                   rotMat.At<double>(1, 1) * offset.Y +
+                                   rotMat.At<double>(1, 2) * offset.Z;
+                    double offsetZ = rotMat.At<double>(2, 0) * offset.X +
+                                   rotMat.At<double>(2, 1) * offset.Y +
+                                   rotMat.At<double>(2, 2) * offset.Z;
+
+                    // 在相机坐标系中减去旋转后的偏移量以得到立方体中心位置
+                    xCam -= offsetX;
+                    yCam -= offsetY;
+                    zCam -= offsetZ;
+
+                    // 转换到世界坐标系
+                    double xWorld = xCam;                      // 相机2的X轴对应世界X轴
+                    double yWorld = -zCam - CAMERA2_DISTANCE;  // 相机2的Z轴对应世界-Y轴
+                    double zWorld = yCam;                      // 相机2的Y轴对应世界Z轴
+
+                    // 转换角度到度数
+                    roll = roll * 180.0 / Math.PI;
+                    pitch = pitch * 180.0 / Math.PI;
+                    yaw = yaw * 180.0 / Math.PI;
+
+                    return (xWorld, yWorld, zWorld, roll, pitch, yaw);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in EstimateCubePoseFromMarker2: {ex.Message}");
                 return (0, 0, 0, 0, 0, 0);
             }
         }
@@ -1353,16 +1374,35 @@ namespace 海康威视图像采集及处理
             return angle;
         }
 
+        private double FuseAngles(double angle1, double angle2)
+        {
+            // 确保两个角度都在-180到180度范围内
+            angle1 = NormalizeAngle(angle1);
+            angle2 = NormalizeAngle(angle2);
+
+            // 计算角度差
+            double diff = angle2 - angle1;
+
+            // 如果角度差大于180度，需要调整
+            if (diff > 180)
+                angle2 -= 360;
+            else if (diff < -180)
+                angle2 += 360;
+
+            // 计算平均值并标准化
+            return NormalizeAngle((angle1 + angle2) / 2);
+        }
+
 
         // 新增的 ArUco 检测相关代码
-        private Mat ProcessImage1(Mat image, out Mat grayImage, out float CenterX, out float CenterY,
-            out float Roll, out float Pitch, out float Yaw) 
+        private Mat ProcessImage1(Mat image, out Mat grayImage,
+            out float X, out float Y, out float Z, 
+            out float Roll, out float Pitch, out float Yaw,
+            out int selectedMarkerId)
         {
-            CenterX = 0;
-            CenterY = 0;
-            Roll = 0;    // 初始化姿态角度
-            Pitch = 0;
-            Yaw = 0;
+            X = 0; Y = 0; Z = 0;  // 初始化
+            Roll = 0; Pitch = 0; Yaw = 0;
+            selectedMarkerId = -1;
 
             grayImage = new Mat();
             Cv2.CvtColor(image, grayImage, ColorConversionCodes.BGR2GRAY);
@@ -1394,6 +1434,7 @@ namespace 海康威视图像采集及处理
                         .ToList();
 
                     var bestMarker = markersWithArea[0];
+                    selectedMarkerId = bestMarker.Id;  // 记录使用的marker ID
                     using (var rvec = new Mat())
                     using (var tvec = new Mat())
                     {
@@ -1415,17 +1456,16 @@ namespace 海康威视图像采集及处理
                         );
 
                         // 获取立方体位姿
-                        var cubePose = EstimateCubePoseFromMarker(bestMarker.Id, rvec, tvec);
+                        var cubePose = EstimateCubePoseFromMarker1(bestMarker.Id, rvec, tvec);
 
                         // 更新姿态角度
+                        X = (float)cubePose.X;
+                        Y = (float)cubePose.Y;
+                        Z = (float)cubePose.Z;
                         Roll = (float)cubePose.Roll;
                         Pitch = (float)cubePose.Pitch;
                         Yaw = (float)cubePose.Yaw;
 
-                        var (centerX, centerY) = EstimateCubeCenterFromMarker(
-                            bestMarker.Id, bestMarker.Corners, rvec, tvec);
-                        CenterX = centerX;
-                        CenterY = centerY;
                     }
                 }
             }
@@ -1435,14 +1475,14 @@ namespace 海康威视图像采集及处理
             }
             return outputImage;
         }
-        private Mat ProcessImage2(Mat image, out Mat grayImage, out float CenterX, out float CenterY,
-            out float Roll, out float Pitch, out float Yaw)  // 新增三个输出参数
+        private Mat ProcessImage2(Mat image, out Mat grayImage,
+            out float X, out float Y, out float Z,  
+            out float Roll, out float Pitch, out float Yaw,
+            out int selectedMarkerId)
         {
-            CenterX = 0;
-            CenterY = 0;
-            Roll = 0;    // 初始化姿态角度
-            Pitch = 0;
-            Yaw = 0;
+            X = 0; Y = 0; Z = 0;  // 初始化
+            Roll = 0; Pitch = 0; Yaw = 0;
+            selectedMarkerId = -1;
 
             grayImage = new Mat();
             Cv2.CvtColor(image, grayImage, ColorConversionCodes.BGR2GRAY);
@@ -1474,6 +1514,8 @@ namespace 海康威视图像采集及处理
                         .ToList();
 
                     var bestMarker = markersWithArea[0];
+                    selectedMarkerId = bestMarker.Id;  // 记录使用的marker ID
+
                     using (var rvec = new Mat())
                     using (var tvec = new Mat())
                     {
@@ -1495,17 +1537,17 @@ namespace 海康威视图像采集及处理
                         );
 
                         // 获取立方体位姿
-                        var cubePose = EstimateCubePoseFromMarker(bestMarker.Id, rvec, tvec);
+                        var cubePose = EstimateCubePoseFromMarker2(bestMarker.Id, rvec, tvec);
 
                         // 更新姿态角度
+                        X = (float)cubePose.X;
+                        Y = (float)cubePose.Y;
+                        Z = (float)cubePose.Z;
                         Roll = (float)cubePose.Roll;
                         Pitch = (float)cubePose.Pitch;
                         Yaw = (float)cubePose.Yaw;
 
-                        var (centerX, centerY) = EstimateCubeCenterFromMarker(
-                            bestMarker.Id, bestMarker.Corners, rvec, tvec);
-                        CenterX = centerX;
-                        CenterY = centerY;
+
                     }
                 }
             }
@@ -1515,126 +1557,129 @@ namespace 海康威视图像采集及处理
             }
             return outputImage;
         }
-        private void ProcessCircleCenters(float X1, float Y1, float X2, float Y2)
-        {
-            float X1D = (1536 - X1) / 7680;
-            float X2D = (1536 - X2) / 7680;
-            float Y1D = (1024 - Y1) / 7680;
-
-            currentCubeInfo.Position = (
-                ((((45 * X1D * X2D) + (45 * X2D)) / (1 + X1D * X2D)) + 12),
-                (((45 - currentCubeInfo.Position.X) * X1D) + 11),
-                (((45 - currentCubeInfo.Position.X) * Y1D) + 7)
-            );
-
-            string positionText =
-                $"Cube Information:\n\n" +
-                $"Position (mm):\n" +
-                $"X = {currentCubeInfo.Position.X:F2}\n" +
-                $"Y = {currentCubeInfo.Position.Y:F2}\n" +
-                $"Z = {currentCubeInfo.Position.Z:F2}\n\n" +
-                $"Rotation (deg):\n" +
-                $"Roll = {currentCubeInfo.Rotation.Roll:F2}\n" +
-                $"Pitch = {currentCubeInfo.Rotation.Pitch:F2}\n" +
-                $"Yaw = {currentCubeInfo.Rotation.Yaw:F2}";
-
-            UpdateTextBox3(positionText);
-        }
-
 
         // 异步图像处理相关方法
 
-        private void ProcessAndDisplayImageAsync(Mat mat)
+        private void ProcessAndDisplayImageAsync1(Mat mat)
         {
             Task.Run(() =>
             {
                 Mat grayImage;
-                float X, Y;
-                float Roll, Pitch, Yaw;  // 添加姿态角度变量
-                Mat processedImage = ProcessImage1(mat, out grayImage, out X, out Y,
-                    out Roll, out Pitch, out Yaw);  // 更新方法调用
-
-                // 应用平滑处理
-                var smoothedPosition = smoothingFilters[0].UpdateAndGetSmoothedPosition(X, Y);
-                X = smoothedPosition.X;
-                Y = smoothedPosition.Y;
+                float X, Y, Z; 
+                float Roll, Pitch, Yaw;
+                int selectedMarkerId;
+                Mat processedImage = ProcessImage1(mat, out grayImage,
+                    out X, out Y, out Z,  
+                    out Roll, out Pitch, out Yaw,
+                    out selectedMarkerId);
 
                 lock (syncLock)
                 {
-                    cubeCenters[0] = (X, Y);
-                    currentCubeInfo.Rotation = (Roll, Pitch, Yaw);  // 更新姿态信息
+                    camera1Pose = (X, Y, Z, Roll, Pitch, Yaw);
 
-                    if (cubeCenters[0].HasValue && cubeCenters[1].HasValue)
+                    if (camera1Pose.HasValue && camera2Pose.HasValue)
                     {
-                        var center1 = cubeCenters[0].Value;
-                        var center2 = cubeCenters[1].Value;
-
-                        ProcessCircleCenters(
-                            center1.X, center1.Y,
-                            center2.X, center2.Y);
-
-                        cubeCenters[0] = null;
-                        cubeCenters[1] = null;
+                        ProcessCircleCenters(camera1Pose.Value, camera2Pose.Value);
+                        camera1Pose = null;
+                        camera2Pose = null;
                     }
                 }
 
                 this.Invoke((Action)(() =>
                 {
-                    string info = $"Marker Information:\n" +   
-                                 $"Position: X={X:F2}, Y={Y:F2}\n" +
-                                 $"Rotation: Roll={Roll:F2}, Pitch={Pitch:F2}, Yaw={Yaw:F2}";
-                    txt_Test.Text = info; 
+                    string info =
+                        $"Camera 1\n\n" +
+                        $"Marker ID: {selectedMarkerId}\n\n" +
+                        $"Position:\n\n" +
+                        $"X = {X:F2}\n\n" +
+                        $"Y = {Y:F2}\n\n" +
+                        $"Z = {Z:F2}\n\n" +  
+                        $"Rotation:\n\n" +
+                        $"Roll = {Roll:F2}\n\n" +
+                        $"Pitch = {Pitch:F2}\n\n" +
+                        $"Yaw = {Yaw:F2}";
+                    txt_Test.Text = info;
                     pictureBox2.Image = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(processedImage);
                 }));
             });
         }
 
-        private void ProcessAndDisplayImageAsync2 (Mat mat)
+
+        private void ProcessAndDisplayImageAsync2(Mat mat)
         {
             Task.Run(() =>
             {
-                Mat grayImage2;
-                float X2, Y2;
-                float Roll2, Pitch2, Yaw2;  // 添加姿态角度变量
-                Mat processedImage2 = ProcessImage2(mat, out grayImage2, out X2, out Y2,
-                    out Roll2, out Pitch2, out Yaw2);  // 更新方法调用
-
-                // 应用平滑处理
-                var smoothedPosition2 = smoothingFilters[0].UpdateAndGetSmoothedPosition(X2, Y2);
-                X2 = smoothedPosition2.X;
-                Y2 = smoothedPosition2.Y;
+                Mat grayImage;
+                float X, Y, Z;  
+                float Roll, Pitch, Yaw;
+                int selectedMarkerId;
+                Mat processedImage = ProcessImage2(mat, out grayImage,
+                    out X, out Y, out Z,  
+                    out Roll, out Pitch, out Yaw,
+                    out selectedMarkerId);
 
                 lock (syncLock)
                 {
-                    cubeCenters[1] = (X2, Y2);
-                    currentCubeInfo.Rotation = (Roll2, Pitch2, Yaw2);  // 更新姿态信息
+                    camera2Pose = (X, Y, Z, Roll, Pitch, Yaw);
 
-                    if (cubeCenters[0].HasValue && cubeCenters[1].HasValue)
+                    if (camera1Pose.HasValue && camera2Pose.HasValue)
                     {
-                        var center1 = cubeCenters[0].Value;
-                        var center2 = cubeCenters[1].Value;
-
-                        ProcessCircleCenters(
-                            center1.X, center1.Y,
-                            center2.X, center2.Y);
-
-                        cubeCenters[0] = null;
-                        cubeCenters[1] = null;
+                        ProcessCircleCenters(camera1Pose.Value, camera2Pose.Value);
+                        camera1Pose = null;
+                        camera2Pose = null;
                     }
                 }
 
                 this.Invoke((Action)(() =>
                 {
-                    string info2 = $"Marker Information:\n" +
-                                 $"Position: X={X2:F2}, Y={Y2:F2}\n" +
-                                 $"Rotation: Roll={Roll2:F2}, Pitch={Pitch2:F2}, Yaw={Yaw2:F2}";
-                    txt_Test2.Text = info2;
-                    pictureBox4.Image = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(processedImage2);
+                    string info =
+                        $"Camera 2\n\n" +
+                        $"Marker ID: {selectedMarkerId}\n\n" +
+                        $"Position:\n\n" +
+                        $"X = {X:F2}\n\n" +
+                        $"Y = {Y:F2}\n\n" +
+                        $"Z = {Z:F2}\n\n" +  
+                        $"Rotation:\n\n" +
+                        $"Roll = {Roll:F2}\n\n" +
+                        $"Pitch = {Pitch:F2}\n\n" +
+                        $"Yaw = {Yaw:F2}";
+                    txt_Test2.Text = info;
+                    pictureBox4.Image = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(processedImage);
                 }));
             });
         }
+        private void ProcessCircleCenters(
+            (double X, double Y, double Z, double Roll, double Pitch, double Yaw) pose1,
+            (double X, double Y, double Z, double Roll, double Pitch, double Yaw) pose2)
+        {
+            // 位置融合
+            // 相机1（12点方向）提供Y和Z信息，相机2（3点方向）提供X和Z信息
+            // Z值取两个相机的平均值，因为两个相机都能提供相对可靠的Z信息
+            var fusedPose = (
+                X: pose2.X,            // 从相机2获取X（相机2的X轴方向更可靠）
+                Y: pose1.Y,            // 从相机1获取Y（相机1的X轴方向更可靠）
+                Z: (pose1.Z + pose2.Z) / 2,  // Z取平均值
 
+                // 姿态角度直接取平均
+                Roll: FuseAngles(pose1.Roll, pose2.Roll),
+                Pitch: FuseAngles(pose1.Pitch, pose2.Pitch),
+                Yaw: FuseAngles(pose1.Yaw, pose2.Yaw)
+                        );
 
+            // 更新显示
+            string positionText =
+                $"Fused Cube Pose:\n\n" +
+                $"Position (mm):\n\n" +
+                $"X = {fusedPose.X:F2} (from Camera2)\n\n" +
+                $"Y = {fusedPose.Y:F2} (from Camera1)\n\n" +
+                $"Z = {fusedPose.Z:F2} (averaged)\n\n" +
+                $"Rotation (deg):\n\n" +
+                $"Roll = {fusedPose.Roll:F2}\n\n" +
+                $"Pitch = {fusedPose.Pitch:F2}\n\n" +
+                $"Yaw = {fusedPose.Yaw:F2}";
+
+            UpdateTextBox3(positionText);
+        }
 
         // 触发模式相关方法
         private void bnContinuesMode_CheckedChanged(object sender, EventArgs e)
