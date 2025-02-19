@@ -68,7 +68,7 @@ namespace 海康威视图像采集及处理
         // 图像处理相关变量
         private bool IsImageProceee = false;
         private bool IsImageProceee2 = false;
-        private int frameCounter = 0;
+        //private int frameCounter = 0;
         private int frameCounter2 = 0;
         private bool IsTrigger = false;
         Thread TriggerThread = null;
@@ -107,52 +107,7 @@ namespace 海康威视图像采集及处理
             return Math.Abs(area) / 2;
         }
 
-        // 添加平滑滤波相关变量
-        private class SmoothingFilter
-        {
-            private const int WINDOW_SIZE = 5;
-            private Queue<(float X, float Y)> positionHistory = new Queue<(float X, float Y)>();
-            private const float SMOOTHING_FACTOR = 0.5f;
-            private (float X, float Y) lastSmoothedPosition = (0, 0);
-            private bool hasLastPosition = false;
 
-            public (float X, float Y) UpdateAndGetSmoothedPosition(float newX, float newY)
-            {
-                positionHistory.Enqueue((newX, newY));
-                if (positionHistory.Count > WINDOW_SIZE)
-                {
-                    positionHistory.Dequeue();
-                }
-
-                float avgX = positionHistory.Average(p => p.X);
-                float avgY = positionHistory.Average(p => p.Y);
-
-                if (!hasLastPosition)
-                {
-                    lastSmoothedPosition = (avgX, avgY);
-                    hasLastPosition = true;
-                    return lastSmoothedPosition;
-                }
-
-                float smoothedX = SMOOTHING_FACTOR * lastSmoothedPosition.X + (1 - SMOOTHING_FACTOR) * avgX;
-                float smoothedY = SMOOTHING_FACTOR * lastSmoothedPosition.Y + (1 - SMOOTHING_FACTOR) * avgY;
-
-                lastSmoothedPosition = (smoothedX, smoothedY);
-                return lastSmoothedPosition;
-            }
-
-            public void Reset()
-            {
-                positionHistory.Clear();
-                hasLastPosition = false;
-            }
-        }
-
-        private SmoothingFilter[] smoothingFilters = new SmoothingFilter[]
-        {
-        new SmoothingFilter(),
-        new SmoothingFilter()
-        };
 
         public Form1()
         {
@@ -1031,9 +986,6 @@ namespace 海康威视图像采集及处理
             m_bGrabbing = false;
             m_hReceiveThread.Join();
 
-            // 重置平滑器
-            smoothingFilters[0].Reset();
-
             int nRet = m_MyCamera.MV_CC_StopGrabbing_NET();
             if (nRet != MyCamera.MV_OK)
             {
@@ -1047,9 +999,6 @@ namespace 海康威视图像采集及处理
         {
             m_bGrabbing2 = false;
             m_hReceiveThread2.Join();
-
-            // 重置平滑器
-            smoothingFilters[1].Reset();
 
             int nRet = m_MyCamera2.MV_CC_StopGrabbing_NET();
             if (nRet != MyCamera.MV_OK)
@@ -1255,7 +1204,7 @@ namespace 海康威视图像采集及处理
 
         private (double Roll, double Pitch, double Yaw) CalculateEulerAngles(Matrix4x4 rotationMatrix)
         {
-            // 使用原有的欧拉角计算逻辑，但输入为Matrix4x4
+            // 输入为Matrix4x4的欧拉角计算逻辑
             double roll = Math.Atan2(rotationMatrix.M23, rotationMatrix.M33);
             double pitch = Math.Atan2(-rotationMatrix.M13,
                 Math.Sqrt(rotationMatrix.M23 * rotationMatrix.M23 + rotationMatrix.M33 * rotationMatrix.M33));
@@ -1387,6 +1336,63 @@ namespace 海康威视图像采集及处理
             return NormalizeAngle((angle1 + angle2) / 2);
         }
 
+        /*
+        private void DrawCubeCoordinateSystem(Mat image,
+            Vector3 worldPosition,    // 世界坐标系中的位置
+            Matrix4x4 worldRotation) // 世界坐标系中的旋转矩阵
+        {
+            float axisLength = CUBE_SIZE * 2;
+
+            // 定义世界坐标系中的坐标轴
+            Point3f[] worldAxisPoints = new Point3f[]
+            {
+                new Point3f(0, 0, 0),                // 原点
+                new Point3f(axisLength, 0, 0),       // X轴终点（红色）
+                new Point3f(0, axisLength, 0),       // Y轴终点（绿色）
+                new Point3f(0, 0, axisLength)        // Z轴终点（蓝色）
+            };
+
+            // 将世界坐标系转换到相机坐标系
+            Matrix4x4 worldToCamera = Matrix4x4.Invert(GetCamera1ToWorldMatrix());
+            Vector3 cameraPosition = Vector3.Transform(worldPosition, worldToCamera);
+            Matrix4x4 cameraRotation = Matrix4x4.Multiply(worldRotation, worldToCamera);
+
+            // 转换为OpenCV可用的格式
+            using (var tvec = new Mat(3, 1, MatType.CV_64F))
+            using (var rvec = new Mat(3, 1, MatType.CV_64F))
+            {
+                // 设置平移向量
+                tvec.Set(0, 0, cameraPosition.X);
+                tvec.Set(1, 0, cameraPosition.Y);
+                tvec.Set(2, 0, cameraPosition.Z);
+
+                // 从旋转矩阵转换为旋转向量
+                Mat rotMat = new Mat(3, 3, MatType.CV_64F);
+                // 将Matrix4x4转换为Mat
+                for (int i = 0; i < 3; i++)
+                    for (int j = 0; j < 3; j++)
+                        rotMat.Set(i, j, cameraRotation[i, j]);
+
+                Cv2.Rodrigues(rotMat, rvec);
+
+                // 投影坐标轴到图像平面
+                using (var imagePoints = new Mat())
+                {
+                    Cv2.ProjectPoints(
+                        InputArray.Create(worldAxisPoints),
+                        rvec,
+                        tvec,
+                        cameraMatrix,
+                        distCoeffs,
+                        imagePoints
+                    );
+
+                    // 绘制坐标轴
+                    DrawAxis(image, imagePoints);
+                }
+            }
+        }
+        */
 
 
         // 新增的 ArUco 检测相关代码
@@ -1462,6 +1468,23 @@ namespace 海康威视图像采集及处理
                         Yaw = (float)cubePose.Yaw;
 
                     }
+                    /*
+                    if (X != 0 || Y != 0 || Z != 0)  // 检测到有效位姿
+                    {
+                        Vector3 worldPosition = new Vector3(X, Y, Z);
+                        Matrix4x4 worldRotation = Matrix4x4.CreateFromYawPitchRoll(
+                            Yaw * (float)Math.PI / 180.0f,
+                            Pitch * (float)Math.PI / 180.0f,
+                            Roll * (float)Math.PI / 180.0f
+                        );
+
+                        DrawCubeCoordinateSystem(
+                            processedImage,
+                            worldPosition,
+                            worldRotation
+                        );
+                    }
+                    */
                 }
             }
             catch (Exception ex)
@@ -1542,8 +1565,24 @@ namespace 海康威视图像采集及处理
                         Pitch = (float)cubePose.Pitch;
                         Yaw = (float)cubePose.Yaw;
 
-
                     }
+                    /*
+                    if (X != 0 || Y != 0 || Z != 0)  // 检测到有效位姿
+                    {
+                        Vector3 worldPosition = new Vector3(X, Y, Z);
+                        Matrix4x4 worldRotation = Matrix4x4.CreateFromYawPitchRoll(
+                            Yaw * (float)Math.PI / 180.0f,
+                            Pitch * (float)Math.PI / 180.0f,
+                            Roll * (float)Math.PI / 180.0f
+                        );
+
+                        DrawCubeCoordinateSystem(
+                            processedImage,
+                            worldPosition,
+                            worldRotation
+                        );
+                    }
+                    */
                 }
             }
             catch (Exception ex)
@@ -1584,15 +1623,15 @@ namespace 海康威视图像采集及处理
                 this.Invoke((Action)(() =>
                 {
                     string info =
-                        $"Camera 1\n" +
-                        $"Marker ID: {selectedMarkerId}\n" +
-                        $"Position:\n" +
-                        $"X = {X:F2}\n" +
-                        $"Y = {Y:F2}\n" +
-                        $"Z = {Z:F2}\n" +
-                        $"Rotation:\n" +
-                        $"Roll = {Roll:F2}\n" +
-                        $"Pitch = {Pitch:F2}\n" +
+                        $"Camera 1  \n" +
+                        $"Marker ID: {selectedMarkerId}    \n" +
+                        $"Position:     \n" +
+                        $"X = {X:F2}    \n" +
+                        $"Y = {Y:F2}    \n" +
+                        $"Z = {Z:F2}    \n" +
+                        $"Rotation:     \n" +
+                        $"Roll = {Roll:F2}  \n" +
+                        $"Pitch = {Pitch:F2}    \n" +
                         $"Yaw = {Yaw:F2}";
                     txt_Test.Text = info;
                     pictureBox2.Image = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(processedImage);
@@ -1626,21 +1665,18 @@ namespace 海康威视图像采集及处理
                     }
                 }
 
-
-
-
                 this.Invoke((Action)(() =>
                 {
                     string info =
-                        $"Camera 2\n" +
-                        $"Marker ID: {selectedMarkerId}\n" +
-                        $"Position:\n" +
-                        $"X = {X:F2}\n" +
-                        $"Y = {Y:F2}\n" +
-                        $"Z = {Z:F2}\n" +
-                        $"Rotation:\n" +
-                        $"Roll = {Roll:F2}\n" +
-                        $"Pitch = {Pitch:F2}\n" +
+                        $"Camera 2  \n" +
+                        $"Marker ID: {selectedMarkerId}     \n" +
+                        $"Position:     \n" +
+                        $"X = {X:F2}    \n" +
+                        $"Y = {Y:F2}    \n" +
+                        $"Z = {Z:F2}    \n" +
+                        $"Rotation:     \n" +
+                        $"Roll = {Roll:F2}  \n" +
+                        $"Pitch = {Pitch:F2}    \n" +
                         $"Yaw = {Yaw:F2}";
                     txt_Test2.Text = info;
                     pictureBox4.Image = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(processedImage);
@@ -1667,14 +1703,14 @@ namespace 海康威视图像采集及处理
 
             // 更新显示
             string positionText =
-                $"Fused Cube Pose:\n" +
-                $"Position (mm):\n" +
-                $"X = {fusedPose.X:F2} (get from Camera2)\n" +
-                $"Y = {fusedPose.Y:F2} (get from Camera1)\n" +
-                $"Z = {fusedPose.Z:F2} (averaged)\n\n" +
-                $"Rotation (deg):\n" +
-                $"Roll = {fusedPose.Roll:F2}\n" +
-                $"Pitch = {fusedPose.Pitch:F2}\n" +
+                $"Fused Cube Pose:  \n" +
+                $"Position (mm):    \n" +
+                $"X = {fusedPose.X:F2} (get from Camera2)   \n" +
+                $"Y = {fusedPose.Y:F2} (get from Camera1)   \n" +
+                $"Z = {fusedPose.Z:F2} (averaged)   \n" +
+                $"Rotation (deg):   \n" +
+                $"Roll = {fusedPose.Roll:F2}    \n" +
+                $"Pitch = {fusedPose.Pitch:F2}  \n" +
                 $"Yaw = {fusedPose.Yaw:F2}";
 
             UpdateTextBox3(positionText);
@@ -1817,19 +1853,11 @@ namespace 海康威视图像采集及处理
         private void cbImageProcess_CheckedChanged(object sender, EventArgs e)
         {
             IsImageProceee = cbImageProcess.Checked;
-            if (!IsImageProceee)
-            {
-                smoothingFilters[0].Reset();
-            }
         }
 
         private void cbImageProcess2_CheckedChanged(object sender, EventArgs e)
         {
             IsImageProceee2 = cbImageProcess2.Checked;
-            if (!IsImageProceee2)
-            {
-                smoothingFilters[1].Reset();
-            }
         }
 
         // 软触发相关
