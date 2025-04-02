@@ -92,7 +92,7 @@ namespace 海康威视图像采集及处理
         private const float CAMERA2_DISTANCE = -450.0f;  // 相机2到原点距离（Y轴负方向）
 
         // 定义Marker相对于立方体中心的变换关系
-        private readonly Dictionary<int, (Vector3 offset, Mat worldTransformMatrix)> markerTransforms;
+        private Dictionary<int, (Vector3 offset, Mat transformMatrix)> markerTransforms;
 
 
         //计算marker面积的辅助方法
@@ -113,68 +113,6 @@ namespace 海康威视图像采集及处理
         {
             InitializeComponent();
 
-            // 初始化marker变换关系
-            markerTransforms = new Dictionary<int, (Vector3 offset, Mat worldTransformMatrix)>();
-
-            // 直接定义各Marker到世界坐标系的变换矩阵
-            // 所有矩阵定义遵循右手坐标系规则
-
-            // Marker 1（前面，面向+X方向）
-            Mat marker1ToWorld = new Mat(3, 3, MatType.CV_64F);
-            // 第一行：Marker的Z轴映射到世界X轴
-            marker1ToWorld.Set<double>(0, 0, 0); marker1ToWorld.Set<double>(0, 1, 0); marker1ToWorld.Set<double>(0, 2, 1);
-            // 第二行：Marker的X轴映射到世界-Y轴
-            marker1ToWorld.Set<double>(1, 0, -1); marker1ToWorld.Set<double>(1, 1, 0); marker1ToWorld.Set<double>(1, 2, 0);
-            // 第三行：Marker的Y轴映射到世界-Z轴
-            marker1ToWorld.Set<double>(2, 0, 0); marker1ToWorld.Set<double>(2, 1, -1); marker1ToWorld.Set<double>(2, 2, 0);
-
-            // Marker 3（后面，面向-X方向）
-            Mat marker3ToWorld = new Mat(3, 3, MatType.CV_64F);
-            // 第一行：Marker的Z轴映射到世界-X轴
-            marker3ToWorld.Set<double>(0, 0, 0); marker3ToWorld.Set<double>(0, 1, 0); marker3ToWorld.Set<double>(0, 2, -1);
-            // 第二行：Marker的X轴映射到世界Y轴
-            marker3ToWorld.Set<double>(1, 0, 1); marker3ToWorld.Set<double>(1, 1, 0); marker3ToWorld.Set<double>(1, 2, 0);
-            // 第三行：Marker的Y轴映射到世界-Z轴
-            marker3ToWorld.Set<double>(2, 0, 0); marker3ToWorld.Set<double>(2, 1, -1); marker3ToWorld.Set<double>(2, 2, 0);
-
-            // Marker 5（右面，面向-Y方向）
-            Mat marker5ToWorld = new Mat(3, 3, MatType.CV_64F);
-            // 第一行：Marker的Z轴映射到世界-Y轴
-            marker5ToWorld.Set<double>(0, 0, 0); marker5ToWorld.Set<double>(0, 1, 0); marker5ToWorld.Set<double>(0, 2, -1);
-            // 第二行：Marker的X轴映射到世界-X轴
-            marker5ToWorld.Set<double>(1, 0, -1); marker5ToWorld.Set<double>(1, 1, 0); marker5ToWorld.Set<double>(1, 2, 0);
-            // 第三行：Marker的Y轴映射到世界-Z轴
-            marker5ToWorld.Set<double>(2, 0, 0); marker5ToWorld.Set<double>(2, 1, -1); marker5ToWorld.Set<double>(2, 2, 0);
-
-            // Marker 7（左面，面向+Y方向）
-            Mat marker7ToWorld = new Mat(3, 3, MatType.CV_64F);
-            // 第一行：Marker的Z轴映射到世界Y轴
-            marker7ToWorld.Set<double>(0, 0, 0); marker7ToWorld.Set<double>(0, 1, 0); marker7ToWorld.Set<double>(0, 2, 1);
-            // 第二行：Marker的X轴映射到世界X轴
-            marker7ToWorld.Set<double>(1, 0, 1); marker7ToWorld.Set<double>(1, 1, 0); marker7ToWorld.Set<double>(1, 2, 0);
-            // 第三行：Marker的Y轴映射到世界-Z轴
-            marker7ToWorld.Set<double>(2, 0, 0); marker7ToWorld.Set<double>(2, 1, -1); marker7ToWorld.Set<double>(2, 2, 0);
-
-            // Marker 9（底面，面向+Z方向）
-            Mat marker9ToWorld = new Mat(3, 3, MatType.CV_64F);
-            // 第一行：Marker的Z轴映射到世界Z轴
-            marker9ToWorld.Set<double>(0, 0, 0); marker9ToWorld.Set<double>(0, 1, 1); marker9ToWorld.Set<double>(0, 2, 0);
-            // 第二行：Marker的X轴映射到世界-Y轴
-            marker9ToWorld.Set<double>(1, 0, -1); marker9ToWorld.Set<double>(1, 1, 0); marker9ToWorld.Set<double>(1, 2, 0);
-            // 第三行：Marker的Y轴映射到世界X轴
-            marker9ToWorld.Set<double>(2, 0, 0); marker9ToWorld.Set<double>(2, 1, 0); marker9ToWorld.Set<double>(2, 2, 1);
-
-            // 第2步: 将偏移量和世界变换矩阵存入字典
-            markerTransforms.Add(1, (new Vector3(CUBE_SIZE / 2, 0, 0), marker1ToWorld));
-            markerTransforms.Add(3, (new Vector3(-CUBE_SIZE / 2, 0, 0), marker3ToWorld));
-            markerTransforms.Add(5, (new Vector3(0, -CUBE_SIZE / 2, 0), marker5ToWorld));
-            markerTransforms.Add(7, (new Vector3(0, CUBE_SIZE / 2, 0), marker7ToWorld));
-            markerTransforms.Add(9, (new Vector3(0, 0, CUBE_SIZE / 2), marker9ToWorld));
-
-            // 其他初始化代码保持不变
-            Control.CheckForIllegalCrossThreadCalls = false;
-            this.Load += new EventHandler(Form1_Load);
-
             // 初始化相机参数
             cameraMatrix = Mat.Eye(3, 3, MatType.CV_64F);
             cameraMatrix.Set<double>(0, 0, 1000.0); // fx
@@ -183,6 +121,13 @@ namespace 海康威视图像采集及处理
             cameraMatrix.Set<double>(1, 2, 1024 / 2.0); // cy
 
             distCoeffs = Mat.Zeros(rows: 1, cols: 5, type: MatType.CV_64F);
+
+            // 使用新的初始化方法
+            InitializeMarkerTransforms();
+
+            // 其他初始化代码
+            Control.CheckForIllegalCrossThreadCalls = false;
+            this.Load += new EventHandler(Form1_Load);
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -1213,124 +1158,210 @@ namespace 海康威视图像采集及处理
         }
 
 
-        /*
-        private Matrix4x4 GetCamera1ToWorldMatrix()
+
+
+        // 初始化marker变换关系
+        private void InitializeMarkerTransforms()
         {
-            // 相机1在世界坐标系X轴负方向，距离原点CAMERA1_DISTANCE
-            Matrix4x4 rotation = Matrix4x4.CreateRotationY((float)Math.PI / 2);  // 相机1朝向X轴正方向
-            Matrix4x4 translation = Matrix4x4.CreateTranslation(-CAMERA1_DISTANCE, 0, 0);
-            return Matrix4x4.Multiply(rotation, translation);
+            markerTransforms = new Dictionary<int, (Vector3 offset, Mat transformMatrix)>();
+
+            // 定义立方体到世界坐标系的变换
+            // 在本例中，立方体坐标系与世界坐标系一致，所以是单位矩阵
+            Mat cubeToWorld = Mat.Eye(4, 4, MatType.CV_64F);
+
+            // 定义Marker 1到立方体的变换矩阵
+            Mat marker1ToCube = CreateHomogeneousMatrix();
+
+            // 填充旋转部分：Z->X, X->-Y, Y->-Z
+            marker1ToCube.Set<double>(0, 0, 0); marker1ToCube.Set<double>(0, 1, 0); marker1ToCube.Set<double>(0, 2, 1);
+            marker1ToCube.Set<double>(1, 0, -1); marker1ToCube.Set<double>(1, 1, 0); marker1ToCube.Set<double>(1, 2, 0);
+            marker1ToCube.Set<double>(2, 0, 0); marker1ToCube.Set<double>(2, 1, -1); marker1ToCube.Set<double>(2, 2, 0);
+
+            // 设置平移部分（Marker 1位于立方体的前面，距离中心CUBE_SIZE/2）
+            marker1ToCube.Set<double>(0, 3, -CUBE_SIZE / 2); // -X方向（立方体坐标系，移动到原点）
+            marker1ToCube.Set<double>(1, 3, 0);
+            marker1ToCube.Set<double>(2, 3, 0);
+
+            // 计算Marker 1到世界坐标系的变换
+            Mat marker1ToWorld = cubeToWorld * marker1ToCube;
+
+            // 创建其他Marker的变换矩阵
+
+            // Marker 3 - 后面，面向-X方向
+            Mat marker3ToCube = CreateHomogeneousMatrix();
+            // 旋转部分：Z->-X, X->Y, Y->-Z
+            marker3ToCube.Set<double>(0, 0, 0); marker3ToCube.Set<double>(0, 1, 0); marker3ToCube.Set<double>(0, 2, -1);
+            marker3ToCube.Set<double>(1, 0, 1); marker3ToCube.Set<double>(1, 1, 0); marker3ToCube.Set<double>(1, 2, 0);
+            marker3ToCube.Set<double>(2, 0, 0); marker3ToCube.Set<double>(2, 1, -1); marker3ToCube.Set<double>(2, 2, 0);
+            // 平移部分
+            marker3ToCube.Set<double>(0, 3, CUBE_SIZE / 2); // +X方向
+            marker3ToCube.Set<double>(1, 3, 0);
+            marker3ToCube.Set<double>(2, 3, 0);
+
+            // Marker 5 - 右面，面向-Y方向
+            Mat marker5ToCube = CreateHomogeneousMatrix();
+            // 旋转部分：Z->-Y, X->-X, Y->-Z
+            marker5ToCube.Set<double>(0, 0, -1); marker5ToCube.Set<double>(0, 1, 0); marker5ToCube.Set<double>(0, 2, 0);
+            marker5ToCube.Set<double>(1, 0, 0); marker5ToCube.Set<double>(1, 1, 0); marker5ToCube.Set<double>(1, 2, -1);
+            marker5ToCube.Set<double>(2, 0, 0); marker5ToCube.Set<double>(2, 1, -1); marker5ToCube.Set<double>(2, 2, 0);
+            // 平移部分
+            marker5ToCube.Set<double>(0, 3, 0);
+            marker5ToCube.Set<double>(1, 3, CUBE_SIZE / 2); // +Y方向
+            marker5ToCube.Set<double>(2, 3, 0);
+
+            // Marker 7 - 左面，面向+Y方向
+            Mat marker7ToCube = CreateHomogeneousMatrix();
+            // 旋转部分：Z->Y, X->X, Y->-Z
+            marker7ToCube.Set<double>(0, 0, 1); marker7ToCube.Set<double>(0, 1, 0); marker7ToCube.Set<double>(0, 2, 0);
+            marker7ToCube.Set<double>(1, 0, 0); marker7ToCube.Set<double>(1, 1, 0); marker7ToCube.Set<double>(1, 2, 1);
+            marker7ToCube.Set<double>(2, 0, 0); marker7ToCube.Set<double>(2, 1, -1); marker7ToCube.Set<double>(2, 2, 0);
+            // 平移部分
+            marker7ToCube.Set<double>(0, 3, 0);
+            marker7ToCube.Set<double>(1, 3, -CUBE_SIZE / 2); // -Y方向
+            marker7ToCube.Set<double>(2, 3, 0);
+
+            // Marker 9 - 底面，面向+Z方向
+            Mat marker9ToCube = CreateHomogeneousMatrix();
+            // 旋转部分：Z->Z, X->-Y, Y->X
+            marker9ToCube.Set<double>(0, 0, 0); marker9ToCube.Set<double>(0, 1, -1); marker9ToCube.Set<double>(0, 2, 0);
+            marker9ToCube.Set<double>(1, 0, 1); marker9ToCube.Set<double>(1, 1, 0); marker9ToCube.Set<double>(1, 2, 0);
+            marker9ToCube.Set<double>(2, 0, 0); marker9ToCube.Set<double>(2, 1, 0); marker9ToCube.Set<double>(2, 2, 1);
+            // 平移部分
+            marker9ToCube.Set<double>(0, 3, 0);
+            marker9ToCube.Set<double>(1, 3, 0);
+            marker9ToCube.Set<double>(2, 3, -CUBE_SIZE / 2); // -Z方向
+
+            // 计算所有Marker到世界坐标系的变换
+            Mat marker3ToWorld = cubeToWorld * marker3ToCube;
+            Mat marker5ToWorld = cubeToWorld * marker5ToCube;
+            Mat marker7ToWorld = cubeToWorld * marker7ToCube;
+            Mat marker9ToWorld = cubeToWorld * marker9ToCube;
+
+            // 计算所有Marker到世界坐标系的逆变换（用于估计立方体位姿）
+            Mat marker1ToWorldInv = marker1ToWorld.Inv();
+            Mat marker3ToWorldInv = marker3ToWorld.Inv();
+            Mat marker5ToWorldInv = marker5ToWorld.Inv();
+            Mat marker7ToWorldInv = marker7ToWorld.Inv();
+            Mat marker9ToWorldInv = marker9ToWorld.Inv();
+
+            // 存储变换矩阵（用于从Marker估计立方体位姿）
+            markerTransforms.Add(1, (new Vector3(CUBE_SIZE / 2, 0, 0), marker1ToWorldInv));
+            markerTransforms.Add(3, (new Vector3(-CUBE_SIZE / 2, 0, 0), marker3ToWorldInv));
+            markerTransforms.Add(5, (new Vector3(0, -CUBE_SIZE / 2, 0), marker5ToWorldInv));
+            markerTransforms.Add(7, (new Vector3(0, CUBE_SIZE / 2, 0), marker7ToWorldInv));
+            markerTransforms.Add(9, (new Vector3(0, 0, CUBE_SIZE / 2), marker9ToWorldInv));
         }
 
-        private Matrix4x4 GetCamera2ToWorldMatrix()
+        // 创建4x4的齐次变换矩阵
+        private Mat CreateHomogeneousMatrix()
         {
-            // 相机2在世界坐标系Y轴负方向，距离原点CAMERA2_DISTANCE
-            Matrix4x4 rotation = Matrix4x4.CreateRotationX(-(float)Math.PI / 2);  // 相机2朝向Y轴正方向
-            Matrix4x4 translation = Matrix4x4.CreateTranslation(0, -CAMERA2_DISTANCE, 0);
-            return Matrix4x4.Multiply(rotation, translation);
+            Mat matrix = Mat.Eye(4, 4, MatType.CV_64F);
+            return matrix;
         }
 
-        private Matrix4x4 ToMatrix4x4(Mat cvMat)
+        // 创建相机1到世界坐标系的变换矩阵
+        private Mat CreateCamera1ToWorldMatrix()
         {
-            return new Matrix4x4(
-                (float)cvMat.At<double>(0, 0), (float)cvMat.At<double>(0, 1), (float)cvMat.At<double>(0, 2), 0,
-                (float)cvMat.At<double>(1, 0), (float)cvMat.At<double>(1, 1), (float)cvMat.At<double>(1, 2), 0,
-                (float)cvMat.At<double>(2, 0), (float)cvMat.At<double>(2, 1), (float)cvMat.At<double>(2, 2), 0,
-                0, 0, 0, 1
-            );
+            Mat transform = Mat.Eye(4, 4, MatType.CV_64F);
+
+            // 旋转部分
+            transform.Set<double>(0, 0, 0); transform.Set<double>(0, 1, 0); transform.Set<double>(0, 2, -1);
+            transform.Set<double>(1, 0, -1); transform.Set<double>(1, 1, 0); transform.Set<double>(1, 2, 0);
+            transform.Set<double>(2, 0, 0); transform.Set<double>(2, 1, 1); transform.Set<double>(2, 2, 0);
+
+            // 平移部分
+            transform.Set<double>(0, 3, -CAMERA1_DISTANCE);
+            transform.Set<double>(1, 3, 0);
+            transform.Set<double>(2, 3, 0);
+
+            return transform;
         }
 
-        private (double Roll, double Pitch, double Yaw) CalculateEulerAngles(Matrix4x4 rotationMatrix)
+        // 创建相机2到世界坐标系的变换矩阵
+        private Mat CreateCamera2ToWorldMatrix()
         {
-            // 输入为Matrix4x4的欧拉角计算逻辑
-            double roll = Math.Atan2(rotationMatrix.M23, rotationMatrix.M33);
-            double pitch = Math.Atan2(-rotationMatrix.M13,
-                Math.Sqrt(rotationMatrix.M23 * rotationMatrix.M23 + rotationMatrix.M33 * rotationMatrix.M33));
-            double yaw = Math.Atan2(rotationMatrix.M12, rotationMatrix.M11);
+            Mat transform = Mat.Eye(4, 4, MatType.CV_64F);
 
-            return (
-                Roll: roll * 180.0 / Math.PI,
-                Pitch: pitch * 180.0 / Math.PI,
-                Yaw: yaw * 180.0 / Math.PI
-            );
-        }
-        */
+            // 旋转部分
+            transform.Set<double>(0, 0, 1); transform.Set<double>(0, 1, 0); transform.Set<double>(0, 2, 0);
+            transform.Set<double>(1, 0, 0); transform.Set<double>(1, 1, 0); transform.Set<double>(1, 2, -1);
+            transform.Set<double>(2, 0, 0); transform.Set<double>(2, 1, 1); transform.Set<double>(2, 2, 0);
 
-        // 欧拉角提取函数，使用XYZ顺序
-        private (double Roll, double Pitch, double Yaw) ExtractEulerAnglesXYZ(Mat rotMat)
-        {
-            // XYZ顺序欧拉角提取公式
-            double roll = Math.Atan2(-rotMat.At<double>(1, 2), rotMat.At<double>(2, 2));
-            double pitch = Math.Asin(rotMat.At<double>(0, 2));
-            double yaw = Math.Atan2(-rotMat.At<double>(0, 1), rotMat.At<double>(0, 0));
+            // 平移部分
+            transform.Set<double>(0, 3, 0);
+            transform.Set<double>(1, 3, -CAMERA2_DISTANCE);
+            transform.Set<double>(2, 3, 0);
 
-            // 转换为角度
-            roll = roll * 180.0 / Math.PI;
-            pitch = pitch * 180.0 / Math.PI;
-            yaw = yaw * 180.0 / Math.PI;
-
-            return (roll, pitch, yaw);
+            return transform;
         }
 
-
-        // 由marker推算cube位姿
-
-        //Camera1
+        // 使用变换链来估计立方体位姿（从相机1检测）
         private (double X, double Y, double Z, double Roll, double Pitch, double Yaw)
-             EstimateCubePoseFromMarker1(int markerId, Mat rvec, Mat tvec)
+            EstimateCubePoseFromMarker1(int markerId, Mat rvec, Mat tvec)
         {
             try
             {
-                using (var rotMat = new Mat())
+                // 1. 创建Marker到相机的变换矩阵
+                Mat rotMat = new Mat();
+                Cv2.Rodrigues(rvec, rotMat);
+
+                Mat markerToCamera = CreateHomogeneousMatrix();
+                // 填充旋转部分
+                for (int i = 0; i < 3; i++)
                 {
-                    // 将旋转向量转换为旋转矩阵
-                    Cv2.Rodrigues(rvec, rotMat);
-
-                    // 获取该Marker到世界坐标系的转换矩阵
-                    Mat worldTransform = markerTransforms[markerId].worldTransformMatrix;
-
-                    // 计算立方体的世界坐标系旋转
-                    // 矩阵乘法顺序: rotMat(相机到marker) * worldTransform(marker到世界)
-                    Mat cubeRotMat = rotMat * worldTransform;
-
-                    // 相机坐标系下的位置
-                    double xCam = tvec.Get<double>(0);
-                    double yCam = tvec.Get<double>(1);
-                    double zCam = tvec.Get<double>(2);
-
-                    // 根据marker ID获取其在立方体上的偏移量
-                    Vector3 offset = markerTransforms[markerId].offset;
-
-                    // 使用旋转矩阵对偏移量进行旋转
-                    double offsetX = rotMat.At<double>(0, 0) * offset.X +
-                                   rotMat.At<double>(0, 1) * offset.Y +
-                                   rotMat.At<double>(0, 2) * offset.Z;
-                    double offsetY = rotMat.At<double>(1, 0) * offset.X +
-                                   rotMat.At<double>(1, 1) * offset.Y +
-                                   rotMat.At<double>(1, 2) * offset.Z;
-                    double offsetZ = rotMat.At<double>(2, 0) * offset.X +
-                                   rotMat.At<double>(2, 1) * offset.Y +
-                                   rotMat.At<double>(2, 2) * offset.Z;
-
-                    // 在相机坐标系中减去旋转后的偏移量以得到立方体中心位置
-                    xCam -= offsetX;
-                    yCam -= offsetY;
-                    zCam -= offsetZ;
-
-                    // 转换到世界坐标系 (相机1: Z前X右Y下，世界: X右Y前Z下)
-                    double xWorld = -zCam - CAMERA1_DISTANCE;  // 相机1的Z轴对应世界-X轴
-                    double yWorld = -xCam;                     // 相机1的X轴对应世界-Y轴
-                    double zWorld = yCam;                      // 相机1的Y轴对应世界Z轴（两者都向下）
-
-                    // 使用XYZ顺序提取欧拉角
-                    var (roll, pitch, yaw) = ExtractEulerAnglesXYZ(cubeRotMat);
-
-                    // 角度方向修正（根据测试结果调整）
-                    roll = -roll;  // 反转Roll符号
-                    yaw = -yaw;    // 反转Yaw符号
-
-                    return (xWorld, yWorld, zWorld, roll, pitch, yaw);
+                    for (int j = 0; j < 3; j++)
+                    {
+                        markerToCamera.Set<double>(i, j, rotMat.At<double>(i, j));
+                    }
                 }
+                // 填充平移部分
+                markerToCamera.Set<double>(0, 3, tvec.Get<double>(0));
+                markerToCamera.Set<double>(1, 3, tvec.Get<double>(1));
+                markerToCamera.Set<double>(2, 3, tvec.Get<double>(2));
+
+                // 2. 获取该Marker到世界坐标系的逆变换
+                Mat worldToMarker = markerTransforms[markerId].transformMatrix;
+
+                // 3. 创建相机到世界坐标系的变换
+                Mat cameraToWorld = CreateCamera1ToWorldMatrix();
+
+                // 4. 计算立方体在世界坐标系中的位姿
+                // 变换链: 世界 <- 相机 <- Marker <- 立方体
+                Mat worldToCube = worldToMarker * markerToCamera.Inv() * cameraToWorld.Inv();
+                Mat cubeToWorld = worldToCube.Inv();
+
+                // 5. 从变换矩阵中提取位置
+                double xWorld = cubeToWorld.At<double>(0, 3);
+                double yWorld = cubeToWorld.At<double>(1, 3);
+                double zWorld = cubeToWorld.At<double>(2, 3);
+
+                // 6. 从变换矩阵中提取欧拉角
+                Mat rotationMatrix = new Mat(3, 3, MatType.CV_64F);
+                for (int i = 0; i < 3; i++)
+                {
+                    for (int j = 0; j < 3; j++)
+                    {
+                        rotationMatrix.Set<double>(i, j, cubeToWorld.At<double>(i, j));
+                    }
+                }
+
+                double roll = Math.Atan2(rotationMatrix.At<double>(2, 1), rotationMatrix.At<double>(2, 2));
+                double pitch = Math.Atan2(-rotationMatrix.At<double>(2, 0),
+                    Math.Sqrt(rotationMatrix.At<double>(2, 1) * rotationMatrix.At<double>(2, 1) +
+                             rotationMatrix.At<double>(2, 2) * rotationMatrix.At<double>(2, 2)));
+                double yaw = Math.Atan2(rotationMatrix.At<double>(1, 0), rotationMatrix.At<double>(0, 0));
+
+                // 转换角度到度数
+                roll = roll * 180.0 / Math.PI;
+                pitch = pitch * 180.0 / Math.PI;
+                yaw = yaw * 180.0 / Math.PI;
+
+                // 清理资源
+                rotMat.Dispose();
+                markerToCamera.Dispose();
+                rotationMatrix.Dispose();
+
+                return (xWorld, yWorld, zWorld, roll, pitch, yaw);
             }
             catch (Exception ex)
             {
@@ -1339,61 +1370,73 @@ namespace 海康威视图像采集及处理
             }
         }
 
-        //Camera2
+        // 使用变换链来估计立方体位姿（从相机2检测）
         private (double X, double Y, double Z, double Roll, double Pitch, double Yaw)
-           EstimateCubePoseFromMarker2(int markerId, Mat rvec, Mat tvec)
+            EstimateCubePoseFromMarker2(int markerId, Mat rvec, Mat tvec)
         {
             try
             {
-                using (var rotMat = new Mat())
+                // 1. 创建Marker到相机的变换矩阵
+                Mat rotMat = new Mat();
+                Cv2.Rodrigues(rvec, rotMat);
+
+                Mat markerToCamera = CreateHomogeneousMatrix();
+                // 填充旋转部分
+                for (int i = 0; i < 3; i++)
                 {
-                    // 将旋转向量转换为旋转矩阵
-                    Cv2.Rodrigues(rvec, rotMat);
-
-                    // 获取该Marker到世界坐标系的转换矩阵
-                    Mat worldTransform = markerTransforms[markerId].worldTransformMatrix;
-
-                    // 计算立方体的世界坐标系旋转
-                    Mat cubeRotMat = rotMat * worldTransform;
-
-                    // 相机坐标系下的位置
-                    double xCam = tvec.Get<double>(0);
-                    double yCam = tvec.Get<double>(1);
-                    double zCam = tvec.Get<double>(2);
-
-                    // 根据marker ID获取其在立方体上的偏移量
-                    Vector3 offset = markerTransforms[markerId].offset;
-
-                    // 使用旋转矩阵对偏移量进行旋转
-                    double offsetX = rotMat.At<double>(0, 0) * offset.X +
-                                   rotMat.At<double>(0, 1) * offset.Y +
-                                   rotMat.At<double>(0, 2) * offset.Z;
-                    double offsetY = rotMat.At<double>(1, 0) * offset.X +
-                                   rotMat.At<double>(1, 1) * offset.Y +
-                                   rotMat.At<double>(1, 2) * offset.Z;
-                    double offsetZ = rotMat.At<double>(2, 0) * offset.X +
-                                   rotMat.At<double>(2, 1) * offset.Y +
-                                   rotMat.At<double>(2, 2) * offset.Z;
-
-                    // 在相机坐标系中减去旋转后的偏移量以得到立方体中心位置
-                    xCam -= offsetX;
-                    yCam -= offsetY;
-                    zCam -= offsetZ;
-
-                    // 转换到世界坐标系 (相机2: Z前X右Y下，世界: X右Y前Z下)
-                    double xWorld = xCam;                      // 相机2的X轴对应世界X轴
-                    double yWorld = -zCam - CAMERA2_DISTANCE;  // 相机2的Z轴对应世界-Y轴
-                    double zWorld = yCam;                      // 相机2的Y轴对应世界Z轴（两者都向下）
-
-                    // 使用XYZ顺序提取欧拉角
-                    var (roll, pitch, yaw) = ExtractEulerAnglesXYZ(cubeRotMat);
-
-                    // 角度方向修正（根据测试结果调整）
-                    roll = -roll;  // 反转Roll符号
-                    yaw = -yaw;    // 反转Yaw符号
-
-                    return (xWorld, yWorld, zWorld, roll, pitch, yaw);
+                    for (int j = 0; j < 3; j++)
+                    {
+                        markerToCamera.Set<double>(i, j, rotMat.At<double>(i, j));
+                    }
                 }
+                // 填充平移部分
+                markerToCamera.Set<double>(0, 3, tvec.Get<double>(0));
+                markerToCamera.Set<double>(1, 3, tvec.Get<double>(1));
+                markerToCamera.Set<double>(2, 3, tvec.Get<double>(2));
+
+                // 2. 获取该Marker到世界坐标系的逆变换
+                Mat worldToMarker = markerTransforms[markerId].transformMatrix;
+
+                // 3. 创建相机到世界坐标系的变换
+                Mat cameraToWorld = CreateCamera2ToWorldMatrix();
+
+                // 4. 计算立方体在世界坐标系中的位姿
+                // 变换链: 世界 <- 相机 <- Marker <- 立方体
+                Mat worldToCube = worldToMarker * markerToCamera.Inv() * cameraToWorld.Inv();
+                Mat cubeToWorld = worldToCube.Inv();
+
+                // 5. 从变换矩阵中提取位置
+                double xWorld = cubeToWorld.At<double>(0, 3);
+                double yWorld = cubeToWorld.At<double>(1, 3);
+                double zWorld = cubeToWorld.At<double>(2, 3);
+
+                // 6. 从变换矩阵中提取欧拉角
+                Mat rotationMatrix = new Mat(3, 3, MatType.CV_64F);
+                for (int i = 0; i < 3; i++)
+                {
+                    for (int j = 0; j < 3; j++)
+                    {
+                        rotationMatrix.Set<double>(i, j, cubeToWorld.At<double>(i, j));
+                    }
+                }
+
+                double roll = Math.Atan2(rotationMatrix.At<double>(2, 1), rotationMatrix.At<double>(2, 2));
+                double pitch = Math.Atan2(-rotationMatrix.At<double>(2, 0),
+                    Math.Sqrt(rotationMatrix.At<double>(2, 1) * rotationMatrix.At<double>(2, 1) +
+                             rotationMatrix.At<double>(2, 2) * rotationMatrix.At<double>(2, 2)));
+                double yaw = Math.Atan2(rotationMatrix.At<double>(1, 0), rotationMatrix.At<double>(0, 0));
+
+                // 转换角度到度数
+                roll = roll * 180.0 / Math.PI;
+                pitch = pitch * 180.0 / Math.PI;
+                yaw = yaw * 180.0 / Math.PI;
+
+                // 清理资源
+                rotMat.Dispose();
+                markerToCamera.Dispose();
+                rotationMatrix.Dispose();
+
+                return (xWorld, yWorld, zWorld, roll, pitch, yaw);
             }
             catch (Exception ex)
             {
@@ -1401,8 +1444,6 @@ namespace 海康威视图像采集及处理
                 return (0, 0, 0, 0, 0, 0);
             }
         }
-
-
         // 辅助方法：将角度标准化到 -180 到 180 度范围
         private double NormalizeAngle(double angle)
         {
@@ -1447,7 +1488,6 @@ namespace 海康威视图像采集及处理
             grayImage = new Mat();
             Cv2.CvtColor(image, grayImage, ColorConversionCodes.BGR2GRAY);
             Mat outputImage = image.Clone();
-
             try
             {
                 var dictionary = CvAruco.GetPredefinedDictionary(PredefinedDictionaryName.Dict5X5_250);
@@ -1514,7 +1554,6 @@ namespace 海康威视图像采集及处理
             catch (Exception ex)
             {
                 Console.WriteLine($"Error in image processing: {ex.Message}");
-                selectedMarkerId = -1;  // 确保出错时标记为无效
             }
             return outputImage;
         }
@@ -1613,7 +1652,6 @@ namespace 海康威视图像采集及处理
             catch (Exception ex)
             {
                 Console.WriteLine($"Error in image processing: {ex.Message}");
-                selectedMarkerId = -1;  // 确保出错时标记为无效
             }
             return outputImage;
         }
@@ -1635,20 +1673,14 @@ namespace 海康威视图像采集及处理
 
                 lock (syncLock)
                 {
-                    // 只有当检测到有效Marker时才更新位姿
-                    if (selectedMarkerId >= 0)
-                    {
-                        camera1Pose = (X, Y, Z, Roll, Pitch, Yaw);
+                    camera1Pose = (X, Y, Z, Roll, Pitch, Yaw);
 
-                        // 只有当两个相机都有有效位姿时才融合
-                        if (camera1Pose.HasValue && camera2Pose.HasValue)
-                        {
-                            ProcessCubeCenters(camera1Pose.Value, camera2Pose.Value);
-                            camera1Pose = null;
-                            camera2Pose = null;
-                        }
+                    if (camera1Pose.HasValue && camera2Pose.HasValue)
+                    {
+                        ProcessCubeCenters(camera1Pose.Value, camera2Pose.Value);
+                        camera1Pose = null;
+                        camera2Pose = null;
                     }
-                    // 如果未检测到有效Marker，不更新camera1Pose
                 }
 
 
@@ -1687,21 +1719,14 @@ namespace 海康威视图像采集及处理
 
                 lock (syncLock)
                 {
-                    // 只有当检测到有效Marker时才更新位姿
-                    if (selectedMarkerId >= 0)
+                    camera2Pose = (X, Y, Z, Roll, Pitch, Yaw);
+
+                    if (camera1Pose.HasValue && camera2Pose.HasValue)
                     {
-                        camera2Pose = (X, Y, Z, Roll, Pitch, Yaw);
-
-                        // 只有当两个相机都有有效位姿时才融合
-                        if (camera1Pose.HasValue && camera2Pose.HasValue)
-                        {
-                            ProcessCubeCenters(camera1Pose.Value, camera2Pose.Value);
-                            camera1Pose = null;
-                            camera2Pose = null;
-                        }
+                        ProcessCubeCenters(camera1Pose.Value, camera2Pose.Value);
+                        camera1Pose = null;
+                        camera2Pose = null;
                     }
-                    // 如果未检测到有效Marker，不更新camera2Pose
-
                 }
 
                 this.Invoke((Action)(() =>
@@ -1727,16 +1752,18 @@ namespace 海康威视图像采集及处理
             (double X, double Y, double Z, double Roll, double Pitch, double Yaw) pose2)
         {
             // 位置融合
+            // 相机1（12点方向）提供Y和Z信息，相机2（3点方向）提供X和Z信息
+            // Z值取两个相机的平均值，因为两个相机都能提供相对可靠的Z信息
             var fusedPose = (
-                X: pose2.X,                    // 从相机2获取X (X垂直于相机2的Z轴)
-                Y: pose1.Y,                    // 从相机1获取Y (Y垂直于相机1的Z轴)
-                Z: (pose1.Z + pose2.Z) / 2,    // Z取平均值
+                X: pose2.X,            // 从相机2获取X（相机2的X轴方向更可靠）
+                Y: pose1.Y,            // 从相机1获取Y（相机1的X轴方向更可靠）
+                Z: (pose1.Z + pose2.Z) / 2,  // Z取平均值
 
-                // 角度融合，Roll和Yaw已在各相机函数中反转符号
-                Roll: FuseAngles(pose1.Roll, pose2.Roll),
+                // 姿态角度直接取平均
+                Roll: -FuseAngles(pose1.Roll, pose2.Roll),
                 Pitch: FuseAngles(pose1.Pitch, pose2.Pitch),
-                Yaw: FuseAngles(pose1.Yaw, pose2.Yaw)
-            );
+                Yaw: -FuseAngles(pose1.Yaw, pose2.Yaw)
+               );
 
             // 更新显示
             string positionText =
@@ -1875,7 +1902,7 @@ namespace 海康威视图像采集及处理
             // 释放世界变换矩阵资源
             foreach (var item in markerTransforms.Values)
             {
-                item.worldTransformMatrix?.Dispose();
+                item.transformMatrix?.Dispose();
             }
 
             // 关闭相机
